@@ -27,14 +27,15 @@ class Follower(object):
                  port=None):
 
         if vehicle_connection is None:
-            vehicle_connection = 'localhost:14550'
+            vehicle_connection = 'udp:localhost:14550'
 
+        self.vehicle_connection = vehicle_connection
         self.follow_alt = follow_alt
         self.follow_distance = follow_distance
         self.min_delta = min_delta
         self.port = port
 
-        self.connect_vehicle(vehicle_connection)
+        self.connect_vehicle()
         self.connect_gpsd()
         self.start_app()
 
@@ -45,8 +46,24 @@ class Follower(object):
         t.setDaemon(True)
         t.start()
 
-    def connect_vehicle(self, vehicle_connection):
-        self.v = dronekit.connect(vehicle_connection)
+    def connect_vehicle(self):
+        c = self.vehicle_connection
+        LOG.info('connecting to %s', c)
+
+        kwargs = {}
+
+        if c.startswith('serial:'):
+            try:
+                _, dev, baud = c.split(':')
+            except ValueError:
+                _, dev = c.split(':')
+                baud = None
+
+            c = dev
+            if baud is not None:
+                kwargs['baud'] = baud
+
+        self.v = dronekit.connect(c, **kwargs)
 
     def connect_gpsd(self):
         self.g = GPS()
@@ -90,8 +107,12 @@ class Follower(object):
     def wait_for_arm(self):
         self.prepare()
 
-        LOG.info('arming vehicle')
+        LOG.info('switching to GUIDED mode')
         self.v.mode = 'GUIDED'
+        while self.v.mode.name != 'GUIDED':
+            time.sleep(1)
+
+        LOG.info('arming vehicle')
         self.v.arm()
         while not self.v.armed:
             time.sleep(1)
@@ -167,6 +188,7 @@ def parse_args():
                    type=float,
                    default=10,
                    help='following altitude to maintain')
+    p.add_argument('--vehicle-connection', '-c')
 
     return p.parse_args()
 
@@ -179,7 +201,8 @@ def main():
     logging.basicConfig(level='INFO')
     follower = Follower(port=args.port,
                         follow_distance=args.follow_distance,
-                        follow_alt=args.follow_alt)
+                        follow_alt=args.follow_alt,
+                        vehicle_connection=args.vehicle_connection)
     follower.prepare()
 
     if not args.no_takeoff:
