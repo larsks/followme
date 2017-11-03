@@ -95,42 +95,43 @@ class Follower(object):
 
     def wait_for_vehicle(self):
         LOG.info('waiting for vehicle to initialize')
-        while not self.v.is_armable:
-            time.sleep(1)
+        self.v.wait_for_armable()
         LOG.info('vehicle initialization complete')
 
     def prepare(self):
         self.wait_for_gps()
         self.wait_for_vehicle()
-        self._prepared = True
 
     def wait_for_arm(self):
         self.prepare()
 
         LOG.info('switching to GUIDED mode')
-        self.v.mode = 'GUIDED'
-        while self.v.mode.name != 'GUIDED':
-            time.sleep(1)
+        self.v.wait_for_mode('GUIDED')
 
         LOG.info('arming vehicle')
-        self.v.arm()
-        while not self.v.armed:
-            time.sleep(1)
+        self.v.arm(wait=True)
         LOG.info('vehicle is armed')
 
+    def goto_alt(self, alt):
+        loc = dronekit.LocationGlobalRelative(
+            self.p_vehicle.lat,
+            self.p_vehicle.lng,
+            alt)
+
+        self.v.simple_goto(loc)
+        self.v.wait_for_alt(alt)
+
     def takeoff(self):
-        self.wait_for_arm()
+        if self.v.armed and self.p_vehicle.alt > 1:
+            LOG.info('moving to follow altitude %dm', self.follow_alt)
+            self.goto_alt(self.follow_alt)
+        else:
+            self.wait_for_arm()
 
-        LOG.info('taking off')
-        self.v.simple_takeoff(self.follow_alt)
+            LOG.info('taking off to %fm', self.follow_alt)
+            self.v.wait_simple_takeoff(self.follow_alt)
 
-        LOG.info('waiting for altitude')
-        while True:
-            cur_alt = self.v.location.global_relative_frame.alt
-            if cur_alt >= (0.95 * self.follow_alt):
-                break
-            time.sleep(1)
-        LOG.info('reached altitude %f', cur_alt)
+        LOG.info('reached target altitude (%fm)', self.follow_alt)
 
     @property
     def p_target(self):
