@@ -14,6 +14,7 @@ from followme.observable import Observable
 class _NoFix (object):
     mode = -1
 
+
 NoFix = _NoFix()
 
 
