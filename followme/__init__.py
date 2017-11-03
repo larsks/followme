@@ -1,1 +1,2 @@
-from . import gps
+from . import gpsclient
+from . import geom

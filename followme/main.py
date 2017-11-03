@@ -1,57 +1,20 @@
+from __future__ import absolute_import
 from __future__ import print_function
 
 import dronekit
-import flask
-import json
 import logging
 from pymavlink import mavutil
 import threading
 import time
 
-from followme.geom import Point
-from followme.gps import GPS
+from followme.geom import Point, Point3D, Point4D  # NOQA
+from followme.gpsclient import GPS
+from followme.webapp import create_app
 
 LOG = logging.getLogger(__name__)
 
 follow_alt = 30
 target_distance = 10
-
-
-def webapp(vehicle_pos, target_pos, debug=False):
-    app = flask.Flask(__name__)
-
-    reqlog = logging.getLogger('werkzeug')
-    reqlog.setLevel(logging.ERROR)
-
-    with open('map.html') as fd:
-        map_html = fd.read()
-
-    @app.route('/position')
-    def position():
-        pos = {
-            'target': target_pos.pos,
-            'vehicle': vehicle_pos.pos,
-        }
-
-        return flask.jsonify(pos)
-
-    @app.route('/')
-    def map():
-        return map_html
-
-    return app
-
-
-class VehiclePos(object):
-    def __init__(self, vehicle):
-        self.v = vehicle
-
-    @property
-    def pos(self):
-        loc = self.v.location.global_relative_frame
-
-        return dict(lat=loc.lat, lon=loc.lon, alt=loc.alt,
-                    bearing=self.v.heading)
 
 
 class Follower(object):
@@ -73,7 +36,7 @@ class Follower(object):
         self.start_app()
 
     def start_app(self):
-        app = webapp(VehiclePos(self.v), self.g)
+        app = create_app(self)
         t = threading.Thread(target=app.run)
         t.setDaemon(True)
         t.start()
@@ -151,7 +114,7 @@ class Follower(object):
     @property
     def p_vehicle(self):
         loc = self.v.location.global_relative_frame
-        return Point(loc.lat, loc.lon, loc.alt)
+        return Point4D(loc.lat, loc.lon, loc.alt, self.v.heading)
 
     def start_following(self):
         p_target_last = self.p_target
@@ -173,7 +136,7 @@ class Follower(object):
                 LOG.info('move %f meters', offset)
                 new_p_vehicle = p_vehicle.move_bearing(b, offset)
                 self.v.simple_goto(dronekit.LocationGlobalRelative(
-                    *new_p_vehicle))
+                    *new_p_vehicle[:3]))
             else:
                 self.v.simple_goto(self.v.location.global_relative_frame)
 
@@ -188,7 +151,8 @@ def main():
     logging.basicConfig(level='INFO')
     follower = Follower()
     follower.prepare()
-
+    follower.takeoff()
+    follower.start_following()
 
 if __name__ == '__main__':
     main()
