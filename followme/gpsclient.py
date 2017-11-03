@@ -5,7 +5,7 @@ import threading
 
 import gps
 
-from followme.geom import Point
+from followme.geom import Point3D
 from followme.observable import Observable
 
 
@@ -28,7 +28,7 @@ class GPS(Observable, threading.Thread):
         self._lastfix = NoFix
         self._quit = False
 
-    def run(self):
+    def _run(self):
         self.gps.stream(gps.WATCH_ENABLE | gps.WATCH_NEWSTYLE)
 
         for report in self.gps:
@@ -42,6 +42,12 @@ class GPS(Observable, threading.Thread):
 
                 if self._lastfix.mode != self._fix.mode:
                     self.notify_observers(self._lastfix, self._fix)
+
+    def run(self):
+        try:
+            self._run()
+        finally:
+            self._fix = NoFix
 
     def cancel(self):
         self._quit = True
@@ -62,4 +68,4 @@ class GPS(Observable, threading.Thread):
             return
 
         fix = self.fix
-        return Point(fix.lat, fix.lon, fix.alt)
+        return Point3D(fix.lat, fix.lon, fix.alt)
