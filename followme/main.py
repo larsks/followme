@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+import argparse
 import dronekit
 import logging
 from pymavlink import mavutil
@@ -22,7 +23,8 @@ class Follower(object):
                  vehicle_connection=None,
                  follow_alt=20,
                  follow_distance=5,
-                 min_delta=0.1):
+                 min_delta=0.1,
+                 port=None):
 
         if vehicle_connection is None:
             vehicle_connection = 'localhost:14550'
@@ -30,6 +32,7 @@ class Follower(object):
         self.follow_alt = follow_alt
         self.follow_distance = follow_distance
         self.min_delta = min_delta
+        self.port = port
 
         self.connect_vehicle(vehicle_connection)
         self.connect_gpsd()
@@ -37,7 +40,8 @@ class Follower(object):
 
     def start_app(self):
         app = create_app(self)
-        t = threading.Thread(target=app.run)
+        t = threading.Thread(target=app.run,
+                             kwargs=dict(port=self.port))
         t.setDaemon(True)
         t.start()
 
@@ -87,6 +91,7 @@ class Follower(object):
         self.prepare()
 
         LOG.info('arming vehicle')
+        self.v.mode = 'GUIDED'
         self.v.arm()
         while not self.v.armed:
             time.sleep(1)
@@ -96,7 +101,6 @@ class Follower(object):
         self.wait_for_arm()
 
         LOG.info('taking off')
-        self.v.mode = 'GUIDED'
         self.v.simple_takeoff(self.follow_alt)
 
         LOG.info('waiting for altitude')
@@ -145,13 +149,42 @@ class Follower(object):
             time.sleep(0.5)
 
 
+def parse_args():
+    p = argparse.ArgumentParser()
+
+    p.add_argument('--port', '-p',
+                   default=5000,
+                   type=int,
+                   help='port on which webapp will listen')
+    p.add_argument('--no-takeoff', '-n',
+                   action='store_true',
+                   help='do not arm or takeoff')
+    p.add_argument('--follow-distance', '-d',
+                   type=float,
+                   default=5,
+                   help='horizontal distance to maintain from target')
+    p.add_argument('--follow-alt', '-a',
+                   type=float,
+                   default=10,
+                   help='following altitude to maintain')
+
+    return p.parse_args()
+
+
 def main():
     global follower
 
+    args = parse_args()
+
     logging.basicConfig(level='INFO')
-    follower = Follower()
+    follower = Follower(port=args.port,
+                        follow_distance=args.follow_distance,
+                        follow_alt=args.follow_alt)
     follower.prepare()
-    follower.takeoff()
+
+    if not args.no_takeoff:
+        follower.takeoff()
+
     follower.start_following()
 
 if __name__ == '__main__':
