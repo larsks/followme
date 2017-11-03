@@ -24,9 +24,9 @@
         t = data.target
         quad.rotation = v.bearing;
         vehicle.setIcon(quad);
-        vehicle.setPosition({lat: v.lat, lng: v.lon});
-        target.setPosition({lat: t.lat, lng: t.lon});
-        map.setCenter({lat: t.lat, lng: t.lon})
+        vehicle.setPosition({lat: v.lat, lng: v.lng});
+        target.setPosition({lat: t.lat, lng: t.lng});
+        map.setCenter({lat: t.lat, lng: t.lng})
       }
 
       function update_position() {
