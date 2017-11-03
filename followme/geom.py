@@ -6,46 +6,18 @@ import math
 
 LOG = logging.getLogger(__name__)
 
-_Point = collections.namedtuple('_Point', ['lat', 'lon', 'alt'])
+_Point = collections.namedtuple('_Point', ['lat', 'lon'])
 
 # radius of the earth
 R = 6371e3
 
 
 class Point(_Point):
-    '''A geographic point represented as a (lat, lon, alt) tuple.
-
-    The distance_to and bearing_to methods assume that geographic
-    coordinates are expressed in degrees.
-    '''
-
-    def __new__(cls, x, y, z, radians=False):
-        self = super(Point, cls).__new__(cls, x, y, z)
-        self.radians = radians
-        return self
+    '''A geographic point represented as a (lat, lon) tuple.'''
 
     def to_radians(self):
         '''Convert the latitude and longitude to radians.'''
-        if self.radians:
-            return self
-
-        return Point(
-            math.radians(self.lat),
-            math.radians(self.lon),
-            self.alt,
-            radians=True
-        )
-
-    def to_degrees(self):
-        if not self.radians:
-            return self
-
-        return Point(
-            math.degrees(self.lat),
-            math.degrees(self.lon),
-            self.alt,
-            radians=False
-        )
+        return _Point(math.radians(self.lat), math.radians(self.lon))
 
     def distance_to(self, them):
         '''Calculate the distance to another Point.
@@ -116,5 +88,4 @@ class Point(_Point):
         return Point(
             math.degrees(lat2),
             math.degrees(lon2),
-            self.alt
         )
