@@ -1,47 +1,20 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import functools
-from itertools import ifilter
 import threading
-import time
 
 import gps
+
+from followme.geom import Point
+from followme.observable import Observable
 
 
 # A placeholder value used before we receive any fix information
 # from gpsd.
-NoFix = type('', (), {'mode': -1})()
+class _NoFix (object):
+    mode = -1
 
-
-class Observable(object):
-    def __init__(self):
-        super(Observable, self).__init__()
-
-        self._observers = set()
-        self._obs_lock = threading.Lock()
-
-    def clear_observers(self):
-        with self._obs_lock:
-            self._observers = set()
-
-    def add_observer(self, func):
-        with self._obs_lock:
-            self._observers.add(func)
-
-    def remove_observer(self, func):
-        with self._obs_lock:
-            try:
-                self._observers.remove(func)
-            except KeyError:
-                pass
-
-    def notify_observers(self, *args, **kwargs):
-        with self._obs_lock:
-            obs = list(self._observers)
-
-        for func in obs:
-            func(*args, **kwargs)
+NoFix = _NoFix()
 
 
 class GPS(Observable, threading.Thread):
@@ -56,7 +29,7 @@ class GPS(Observable, threading.Thread):
         self._quit = False
 
     def run(self):
-        self.gps.stream(gps.WATCH_ENABLE|gps.WATCH_NEWSTYLE)
+        self.gps.stream(gps.WATCH_ENABLE | gps.WATCH_NEWSTYLE)
 
         for report in self.gps:
             if self._quit:
@@ -89,4 +62,4 @@ class GPS(Observable, threading.Thread):
             return
 
         fix = self.fix
-        return (fix.lat, fix.lon, fix.alt)
+        return Point(fix.lat, fix.lon, fix.alt)
