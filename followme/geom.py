@@ -29,6 +29,8 @@ class PointBase(object):
         (http://www.movable-type.co.uk/scripts/latlong.html)
         '''
 
+        LOG.info('them = %s', type(them))
+
         self_r = self.to_radians()
         them_r = them.to_radians()
         dlat = them_r.lat - self_r.lat

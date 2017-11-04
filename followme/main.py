@@ -135,7 +135,14 @@ class Follower(object):
 
     @property
     def p_target(self):
-        return self.g.pos
+        while True:
+            pos = self.g.pos
+            if pos:
+                break
+
+            LOG.warning('failed to locate target!')
+
+        return pos
 
     @property
     def p_vehicle(self):
