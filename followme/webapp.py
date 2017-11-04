@@ -24,8 +24,8 @@ def create_app(controller):
     @app.route('/position')
     def position():
         pos = {
-            'target': controller.p_target,
-            'vehicle': controller.p_vehicle,
+            'target': controller.p_target._asdict(),
+            'vehicle': controller.p_vehicle._asdict(),
         }
 
         return flask.jsonify(pos)
