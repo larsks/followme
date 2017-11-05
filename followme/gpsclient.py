@@ -24,16 +24,19 @@ NoFix = _NoFix()
 
 
 class GPS(Observable, threading.Thread):
-    def __init__(self, average_points=5):
+    def __init__(self, average_points=5, min_sats=5):
         super(GPS, self).__init__()
         self.setDaemon(True)
         self.lock = threading.Lock()
 
+        self.min_sats = min_sats
         self._fix = NoFix
         self._lastfix = NoFix
         self._lastgood = None
         self._avg = AveragePosition(average_points)
         self._quit = False
+        self._nsats_visible = 0
+        self._nsats_used = 0
 
     def _set_fix(self, fix):
         with self.lock:
@@ -45,9 +48,16 @@ class GPS(Observable, threading.Thread):
                 self._avg.append(fix.lat, fix.lon, fix.alt)
 
         if self._lastfix.mode != self._fix.mode:
-            LOG.debug('notifying observers of fix change, %d -> %d',
-                      self._lastfix.mode, self._fix.mode)
             self.notify_observers(self._lastfix, self._fix)
+
+    def _set_nsats(self, sky):
+        sats = sky.get('satellites', [])
+        self._nsats_visible = len(sats)
+        self._nsats_used = len([x for x in sats if x['used']])
+        LOG.debug('sats visible=%d, used=%d, min=%d',
+                  self._nsats_visible,
+                  self._nsats_used,
+                  self.min_sats)
 
     def _run(self):
         self.gps = gps.gps()
@@ -59,6 +69,8 @@ class GPS(Observable, threading.Thread):
 
             if report.get('class') == 'TPV':
                 self._set_fix(report)
+            elif report.get('class') == 'SKY':
+                self._set_nsats(report)
 
     def run(self):
         while True:
@@ -80,7 +92,10 @@ class GPS(Observable, threading.Thread):
 
     @property
     def has_fix(self):
-        return self._fix.mode == gps.MODE_3D
+        return (
+            self._fix.mode == gps.MODE_3D and
+            self._nsats_used > self.min_sats
+        )
 
     @property
     def pos(self):
