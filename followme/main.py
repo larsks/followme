@@ -24,8 +24,9 @@ class Follower(object):
                  vehicle_connection=None,
                  follow_alt=20,
                  follow_distance=5,
-                 min_delta=0.1,
+                 min_delta=0.3,
                  average_points=5,
+                 loop_interval=0.1,
                  port=None):
 
         if vehicle_connection is None:
@@ -36,6 +37,7 @@ class Follower(object):
         self.follow_distance = follow_distance
         self.min_delta = min_delta
         self.port = port
+        self.loop_interval = loop_interval
         self._vpos = AveragePosition(average_points)
 
         self.connect_vehicle()
@@ -159,6 +161,8 @@ class Follower(object):
             d_moved = p_target_last.distance_to(p_target)
             b = p_vehicle.bearing_to(p_target)
             offset = (d_target - self.follow_distance)
+            p_target_last = p_target
+            yaw_offset = b - self.v.heading
 
             LOG.debug('distance to target: %f', d_target)
             LOG.debug('bearing to target: %f', b)
@@ -167,20 +171,23 @@ class Follower(object):
 
             if d_moved < self.min_delta:
                 LOG.debug('target is stationary')
-                continue
+                threshold = 0.1
+            else:
+                LOG.debug('target is in motion')
+                threshold = 0.05
 
-            LOG.debug('target is in motion')
-
-            if abs(offset) > (0.05 * self.follow_distance):
+            max_offset = threshold * self.follow_distance
+            if abs(offset) > max_offset:
                 LOG.debug('move %f meters', offset)
                 new_p_vehicle = p_vehicle.move_bearing(b, offset)
                 self.v.simple_goto(dronekit.LocationGlobalRelative(
                     new_p_vehicle.lat, new_p_vehicle.lng,
                     self.follow_alt))
 
-            self.set_yaw(b)
-            p_target_last = p_target
-            time.sleep(0.5)
+            if abs(yaw_offset) > 5:
+                self.set_yaw(b)
+
+            time.sleep(self.loop_interval)
 
 
 def parse_args():
@@ -202,6 +209,10 @@ def parse_args():
                    default=10,
                    help='following altitude to maintain')
     p.add_argument('--vehicle-connection', '-c')
+    p.add_argument('--loop-interval', '-i',
+                   type=float,
+                   default=0.1,
+                   help='control main loop frequency')
     p.add_argument('--debug',
                    action='store_const',
                    const='DEBUG',
@@ -221,6 +232,7 @@ def main():
     follower = Follower(port=args.port,
                         follow_distance=args.follow_distance,
                         follow_alt=args.follow_alt,
+                        loop_interval=args.loop_interval,
                         vehicle_connection=args.vehicle_connection)
     follower.prepare()
     follower.start_app()
