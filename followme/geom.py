@@ -29,8 +29,6 @@ class PointBase(object):
         (http://www.movable-type.co.uk/scripts/latlong.html)
         '''
 
-        LOG.info('them = %s', type(them))
-
         self_r = self.to_radians()
         them_r = them.to_radians()
         dlat = them_r.lat - self_r.lat
@@ -100,8 +98,10 @@ class Point(_Point, PointBase):
 
 
 class Point3D(_Point3D, PointBase):
-    pass
+    def to_point(self):
+        return Point(*self[:2])
 
 
 class Point4D(_Point4D, PointBase):
-    pass
+    def to_point(self):
+        return Point(*self[:2])

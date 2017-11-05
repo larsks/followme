@@ -11,6 +11,7 @@ import time
 from followme.geom import Point, Point3D, Point4D  # NOQA
 from followme.gpsclient import GPS
 from followme.webapp import create_app
+from followme.tools import AveragePosition
 
 LOG = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class Follower(object):
                  follow_alt=20,
                  follow_distance=5,
                  min_delta=0.1,
+                 average_points=5,
                  port=None):
 
         if vehicle_connection is None:
@@ -34,10 +36,21 @@ class Follower(object):
         self.follow_distance = follow_distance
         self.min_delta = min_delta
         self.port = port
+        self._vpos = AveragePosition(average_points)
 
         self.connect_vehicle()
         self.connect_gpsd()
-        self.start_app()
+
+    @property
+    def p_vehicle(self):
+        return Point3D(*self._vpos.value)
+
+    @property
+    def p_target(self):
+        return self.g.pos
+
+    def update_vpos(self, obj, attr, val):
+        self._vpos.append(val.lat, val.lon, val.alt)
 
     def start_app(self):
         app = create_app(self)
@@ -64,6 +77,9 @@ class Follower(object):
                 kwargs['baud'] = baud
 
         self.v = dronekit.connect(c, **kwargs)
+        self.v.location.add_attribute_listener(
+            'global_frame',
+            self.update_vpos)
 
     def connect_gpsd(self):
         self.g = GPS()
@@ -122,7 +138,7 @@ class Follower(object):
         self.v.wait_for_alt(alt)
 
     def takeoff(self):
-        if self.v.armed and self.p_vehicle.alt > 1:
+        if self.v.armed:
             LOG.info('moving to follow altitude %dm', self.follow_alt)
             self.goto_alt(self.follow_alt)
         else:
@@ -133,24 +149,8 @@ class Follower(object):
 
         LOG.info('reached target altitude (%fm)', self.follow_alt)
 
-    @property
-    def p_target(self):
-        while True:
-            pos = self.g.pos
-            if pos:
-                break
-
-            LOG.warning('failed to locate target!')
-
-        return pos
-
-    @property
-    def p_vehicle(self):
-        loc = self.v.location.global_relative_frame
-        return Point4D(loc.lat, loc.lon, loc.alt, self.v.heading)
-
     def start_following(self):
-        p_target_last = self.p_target
+        p_target_last = self.g.pos
         while True:
             p_target = self.p_target
             p_vehicle = self.p_vehicle
@@ -160,18 +160,23 @@ class Follower(object):
             b = p_vehicle.bearing_to(p_target)
             offset = (d_target - self.follow_distance)
 
-            LOG.info('distance to target: %f', d_target)
-            LOG.info('bearing to target: %f', b)
-            LOG.info('target moved: %f, offset: %f',
-                     d_moved, offset)
+            LOG.debug('distance to target: %f', d_target)
+            LOG.debug('bearing to target: %f', b)
+            LOG.debug('target moved: %f, offset: %f',
+                      d_moved, offset)
+
+            if d_moved < self.min_delta:
+                LOG.debug('target is stationary')
+                continue
+
+            LOG.debug('target is in motion')
 
             if abs(offset) > (0.05 * self.follow_distance):
-                LOG.info('move %f meters', offset)
+                LOG.debug('move %f meters', offset)
                 new_p_vehicle = p_vehicle.move_bearing(b, offset)
                 self.v.simple_goto(dronekit.LocationGlobalRelative(
-                    *new_p_vehicle[:3]))
-            else:
-                self.v.simple_goto(self.v.location.global_relative_frame)
+                    new_p_vehicle.lat, new_p_vehicle.lng,
+                    self.follow_alt))
 
             self.set_yaw(b)
             p_target_last = p_target
@@ -197,6 +202,12 @@ def parse_args():
                    default=10,
                    help='following altitude to maintain')
     p.add_argument('--vehicle-connection', '-c')
+    p.add_argument('--debug',
+                   action='store_const',
+                   const='DEBUG',
+                   dest='loglevel')
+
+    p.set_defaults(loglevel='INFO')
 
     return p.parse_args()
 
@@ -205,13 +216,14 @@ def main():
     global follower
 
     args = parse_args()
+    logging.basicConfig(level=args.loglevel)
 
-    logging.basicConfig(level='INFO')
     follower = Follower(port=args.port,
                         follow_distance=args.follow_distance,
                         follow_alt=args.follow_alt,
                         vehicle_connection=args.vehicle_connection)
     follower.prepare()
+    follower.start_app()
 
     if not args.no_takeoff:
         follower.takeoff()
